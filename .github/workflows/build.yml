@@ -15,20 +15,52 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        run: pip install flet==0.27.6 numpy matplotlib
-
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.27.4'
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.4'
+          channel: stable
+
+      - name: Accept Android licenses
+        run: yes | flutter doctor --android-licenses || true
+
+      - name: Install Python dependencies
+        run: pip install flet==0.27.6 numpy matplotlib cookiecutter==1.7.3
+
+      - name: Patch unicode bug
+        run: |
+          find /opt/hostedtoolcache/Python/3.11*/x64/lib/python3.11/site-packages/ -name "*.py" -exec grep -l "unicode" {} \; | while read f; do
+            sed -i 's/isinstance(\(.*\), unicode)/isinstance(\1, str)/g' "$f"
+            sed -i 's/(unicode,/(str,/g' "$f"
+            sed -i 's/, unicode)/, str)/g' "$f"
+            sed -i 's/unicode(/str(/g' "$f"
+          done
+          echo "Patch applied"
+
+      - name: Create cookiecutter_extensions
+        run: |
+          cat > /opt/hostedtoolcache/Python/3.11*/x64/lib/python3.11/site-packages/cookiecutter_extensions.py << 'EOF'
+          from jinja2.ext import Extension
+          class FletExtension(Extension):
+              def __init__(self, environment):
+                  super().__init__(environment)
+                  environment.filters["to_cmake_list"] = lambda v: ";".join(v) if v else ""
+                  environment.filters["to_android_dependencies"] = lambda v: "" if not v else "\n".join([f"    implementation '{d}'" for d in v])
+                  environment.filters["to_plist_array"] = lambda v: "" if not v else "\n".join([f"    <string>{i}</string>" for i in v])
+                  environment.globals["get_pyproject"] = lambda *a, **kw: {}
+                  environment.filters["get_pyproject"] = lambda v, *a, **kw: {}
+                  environment.globals["to_toml"] = lambda v: ""
+                  environment.filters["to_toml"] = lambda v: ""
+          EOF
+
       - name: Build APK
-        run: flet build apk --no-rich-output
+        run: |
+          export PYTHONIOENCODING=utf-8
+          flet build apk --no-rich-output
 
       - uses: actions/upload-artifact@v4
         with:
