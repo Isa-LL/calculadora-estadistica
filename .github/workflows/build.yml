@@ -34,6 +34,24 @@ jobs:
       - name: Write patch files
         run: python write_patches.py
 
+      - name: Find exact source of encoding error
+        run: |
+          python -c "
+          import site, os
+          site_dir = site.getsitepackages()[0]
+          cc_dir = os.path.join(site_dir, 'cookiecutter')
+          print('=== cookiecutter files ===')
+          for f in sorted(os.listdir(cc_dir)):
+              if f.endswith('.py'):
+                  path = os.path.join(cc_dir, f)
+                  with open(path) as fp:
+                      content = fp.read()
+                  if 'encoding' in content and 'str(' in content:
+                      for i, line in enumerate(content.splitlines(), 1):
+                          if 'str(' in line and 'encoding' in line:
+                              print(f'{f}:{i}: {line.strip()}')
+          "
+
       - name: Build APK
         run: |
           export PYTHONIOENCODING=utf-8
