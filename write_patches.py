@@ -1,29 +1,55 @@
-import site, os
+import site, os, re
 
 site_dir = site.getsitepackages()[0]
 
-# 1. sitecustomize.py - runs automatically on every Python start
+# 1. sitecustomize.py - solo define unicode/basestring sin tocar str
 sitecustomize = os.path.join(site_dir, 'sitecustomize.py')
 with open(sitecustomize, 'w') as f:
-    f.write("""import builtins
-
-builtins.unicode = str
-builtins.basestring = str
-builtins.long = int
-
-# Fix str(value, encoding) called with encoding=None (Python 2 pattern)
-_orig_str = builtins.str
-class _compat_str(_orig_str):
-    def __new__(cls, obj=b'', encoding=None, errors='strict'):
-        if isinstance(obj, bytes) and encoding is not None:
-            return _orig_str.__new__(cls, obj, encoding, errors)
-        return _orig_str.__new__(cls, obj)
-
-builtins.str = _compat_str
-""")
+    f.write("import builtins\n")
+    f.write("builtins.unicode = str\n")
+    f.write("builtins.basestring = str\n")
+    f.write("builtins.long = int\n")
 print(f"Created: {sitecustomize}")
 
-# 2. cookiecutter_extensions.py - required by flet build template
+# 2. Patch cookiecutter/compat.py - fix str(value, encoding) with encoding=None
+compat_path = os.path.join(site_dir, 'cookiecutter', 'compat.py')
+if os.path.exists(compat_path):
+    with open(compat_path, 'r') as f:
+        content = f.read()
+    # Replace any str(x, encoding) pattern with x.decode(encoding) or just str(x)
+    new_content = content.replace(
+        "str(value, encoding)",
+        "(value.decode(encoding) if isinstance(value, bytes) and encoding else str(value))"
+    ).replace(
+        "str(s, encoding)",
+        "(s.decode(encoding) if isinstance(s, bytes) and encoding else str(s))"
+    )
+    if new_content != content:
+        with open(compat_path, 'w') as f:
+            f.write(new_content)
+        print(f"Patched: {compat_path}")
+    else:
+        print(f"No str(x, encoding) pattern found in {compat_path}, showing content:")
+        print(content[:500])
+
+# 3. Patch ALL cookiecutter .py files for str(x, encoding) pattern
+cc_dir = os.path.join(site_dir, 'cookiecutter')
+for fname in os.listdir(cc_dir):
+    if fname.endswith('.py'):
+        fpath = os.path.join(cc_dir, fname)
+        with open(fpath, 'r', errors='ignore') as f:
+            content = f.read()
+        new_content = re.sub(
+            r'str\((\w+),\s*(\w+)\)',
+            r'(\1.decode(\2) if isinstance(\1, bytes) and \2 else str(\1))',
+            content
+        )
+        if new_content != content:
+            with open(fpath, 'w') as f:
+                f.write(new_content)
+            print(f"Patched str(x,enc): {fpath}")
+
+# 4. cookiecutter_extensions.py
 ext_path = os.path.join(site_dir, 'cookiecutter_extensions.py')
 with open(ext_path, 'w') as f:
     f.write("""from jinja2.ext import Extension
