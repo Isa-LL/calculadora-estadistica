@@ -31,15 +31,23 @@ jobs:
       - name: Install Python dependencies
         run: pip install flet==0.27.6 numpy matplotlib cookiecutter==1.7.3
 
-      - name: Patch unicode bug (only in flet/cookiecutter, not pip)
+      - name: Patch unicode bug and delete pyc cache
         run: |
           SITE=$(python -c "import site; print(site.getsitepackages()[0])")
-          for f in $(grep -rl "\bunicode\b" "$SITE/flet_cli" "$SITE/cookiecutter" 2>/dev/null); do
-            sed -i 's/isinstance(\(.*\), unicode)/isinstance(\1, str)/g' "$f"
-            sed -i 's/(unicode,/(str,/g' "$f"
-            sed -i 's/, unicode)/, str)/g' "$f"
-            sed -i 's/\bunicode(/str(/g' "$f"
-            echo "Patched: $f"
+          # Patch .py files in flet_cli and cookiecutter only
+          for dir in "$SITE/flet_cli" "$SITE/cookiecutter"; do
+            if [ -d "$dir" ]; then
+              grep -rl "\bunicode\b" "$dir" 2>/dev/null | while read f; do
+                sed -i 's/isinstance(\(.*\), unicode)/isinstance(\1, str)/g' "$f"
+                sed -i 's/(unicode,/(str,/g' "$f"
+                sed -i 's/, unicode)/, str)/g' "$f"
+                sed -i 's/\bunicode(/str(/g' "$f"
+                echo "Patched py: $f"
+              done
+              # Delete all .pyc files so Python recompiles from patched .py
+              find "$dir" -name "*.pyc" -delete
+              echo "Deleted pyc cache in $dir"
+            fi
           done
 
       - name: Create cookiecutter_extensions
@@ -59,6 +67,16 @@ jobs:
                   environment.filters["to_toml"] = lambda v: ""
           EOF
           echo "Created: $SITE/cookiecutter_extensions.py"
+
+      - name: Find unicode in pyc files
+        run: |
+          SITE=$(python -c "import site; print(site.getsitepackages()[0])")
+          echo "Searching for unicode in .pyc files..."
+          find "$SITE" -name "*.pyc" | while read f; do
+            if strings "$f" 2>/dev/null | grep -q "^unicode$"; then
+              echo "FOUND unicode in: $f"
+            fi
+          done
 
       - name: Build APK
         run: |
