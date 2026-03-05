@@ -31,34 +31,8 @@ jobs:
       - name: Install Python dependencies
         run: pip install flet==0.27.6 numpy matplotlib cookiecutter==1.7.3
 
-      - name: Install sitecustomize patch
-        run: |
-          SITE=$(python -c "import site; print(site.getsitepackages()[0])")
-          cat > "$SITE/sitecustomize.py" << 'EOF'
-import builtins
-builtins.unicode = str
-builtins.basestring = str
-builtins.long = int
-EOF
-          echo "sitecustomize.py installed at $SITE"
-
-      - name: Create cookiecutter_extensions
-        run: |
-          SITE=$(python -c "import site; print(site.getsitepackages()[0])")
-          cat > "$SITE/cookiecutter_extensions.py" << 'EOF'
-from jinja2.ext import Extension
-class FletExtension(Extension):
-    def __init__(self, environment):
-        super().__init__(environment)
-        environment.filters["to_cmake_list"] = lambda v: ";".join(v) if v else ""
-        environment.filters["to_android_dependencies"] = lambda v: "" if not v else "\n".join([f"    implementation '{d}'" for d in v])
-        environment.filters["to_plist_array"] = lambda v: "" if not v else "\n".join([f"    <string>{i}</string>" for i in v])
-        environment.globals["get_pyproject"] = lambda *a, **kw: {}
-        environment.filters["get_pyproject"] = lambda v, *a, **kw: {}
-        environment.globals["to_toml"] = lambda v: ""
-        environment.filters["to_toml"] = lambda v: ""
-EOF
-          echo "cookiecutter_extensions.py installed"
+      - name: Write patch files
+        run: python write_patches.py
 
       - name: Build APK
         run: |
