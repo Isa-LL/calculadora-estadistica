@@ -33,17 +33,18 @@ jobs:
 
       - name: Patch unicode bug
         run: |
-          find /opt/hostedtoolcache/Python/3.11*/x64/lib/python3.11/site-packages/ -name "*.py" -exec grep -l "unicode" {} \; | while read f; do
+          find $(python -c "import site; print(site.getsitepackages()[0])") -name "*.py" | xargs grep -l "\bunicode\b" 2>/dev/null | while read f; do
             sed -i 's/isinstance(\(.*\), unicode)/isinstance(\1, str)/g' "$f"
             sed -i 's/(unicode,/(str,/g' "$f"
             sed -i 's/, unicode)/, str)/g' "$f"
             sed -i 's/unicode(/str(/g' "$f"
+            echo "Patched: $f"
           done
-          echo "Patch applied"
 
       - name: Create cookiecutter_extensions
         run: |
-          cat > /opt/hostedtoolcache/Python/3.11*/x64/lib/python3.11/site-packages/cookiecutter_extensions.py << 'EOF'
+          SITE=$(python -c "import site; print(site.getsitepackages()[0])")
+          cat > "$SITE/cookiecutter_extensions.py" << 'EOF'
           from jinja2.ext import Extension
           class FletExtension(Extension):
               def __init__(self, environment):
@@ -56,6 +57,7 @@ jobs:
                   environment.globals["to_toml"] = lambda v: ""
                   environment.filters["to_toml"] = lambda v: ""
           EOF
+          echo "Created: $SITE/cookiecutter_extensions.py"
 
       - name: Build APK
         run: |
