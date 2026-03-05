@@ -5,10 +5,22 @@ site_dir = site.getsitepackages()[0]
 # 1. sitecustomize.py - runs automatically on every Python start
 sitecustomize = os.path.join(site_dir, 'sitecustomize.py')
 with open(sitecustomize, 'w') as f:
-    f.write("import builtins\n")
-    f.write("builtins.unicode = str\n")
-    f.write("builtins.basestring = str\n")
-    f.write("builtins.long = int\n")
+    f.write("""import builtins
+
+builtins.unicode = str
+builtins.basestring = str
+builtins.long = int
+
+# Fix str(value, encoding) called with encoding=None (Python 2 pattern)
+_orig_str = builtins.str
+class _compat_str(_orig_str):
+    def __new__(cls, obj=b'', encoding=None, errors='strict'):
+        if isinstance(obj, bytes) and encoding is not None:
+            return _orig_str.__new__(cls, obj, encoding, errors)
+        return _orig_str.__new__(cls, obj)
+
+builtins.str = _compat_str
+""")
 print(f"Created: {sitecustomize}")
 
 # 2. cookiecutter_extensions.py - required by flet build template
